@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오늘의 할 일 - To-Do List</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter & Noto Sans KR -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans KR"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for list */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 8px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 8px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Task text truncation */
+        .task-title-truncate {
+            display: block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        /* Fixed Global Tooltip (Prevents overflow clipping by parent scroll views) */
+        #global-tooltip {
+            position: fixed;
+            z-index: 9999;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s ease-in-out, visibility 0.15s ease-in-out;
+            transform: translateX(-50%);
+        }
+
+        #global-tooltip.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Smooth slide-in effect */
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-slide-in {
+            animation: slideIn 0.25s ease-out forwards;
+        }
+
+        /* Shake animation for validation error */
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            20%,
+            60% {
+                transform: translateX(-6px);
+            }
+
+            40%,
+            80% {
+                transform: translateX(6px);
+            }
+        }
+
+        .animate-shake {
+            animation: shake 0.4s ease-in-out;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-slate-100 font-sans text-slate-800 min-h-screen flex flex-col items-center justify-start p-4 md:p-8 selection:bg-brand-500 selection:text-white">
+
+    <!-- Main Card Container -->
+    <main
+        class="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden flex flex-col my-auto my-4 md:my-8 transition-all">
+
+        <!-- Header Section -->
+        <header class="bg-gradient-to-r from-brand-600 to-indigo-600 text-white p-6 md:p-8 relative z-10">
+            <div class="flex justify-between items-start">
+                <div>
+                    <span id="current-day-badge"
+                        class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/20 backdrop-blur-md mb-2 tracking-wide uppercase">
+                        --요일
+                    </span>
+                    <h1 id="current-date-text" class="text-2xl md:text-3xl font-bold tracking-tight">
+                        ----년 --월 --일
+                    </h1>
+                </div>
+            </div>
+
+            <!-- Stats & Progress Bar -->
+            <div class="mt-6 pt-4 border-t border-white/20">
+                <div class="flex justify-between items-center text-xs md:text-sm font-medium mb-1.5">
+                    <span id="task-stats-text">남은 할 일: 0개</span>
+                    <span id="completion-percentage">0%</span>
+                </div>
+                <div class="w-full bg-black/20 rounded-full h-2 overflow-hidden">
+                    <div id="progress-bar" class="bg-white h-full rounded-full transition-all duration-500 ease-out"
+                        style="width: 0%"></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Control Bar & Filter Tabs -->
+        <div
+            class="p-4 md:px-6 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 relative z-10">
+            <!-- Filter Buttons -->
+            <div class="flex bg-slate-200/70 p-1 rounded-xl text-xs md:text-sm font-medium">
+                <button onclick="setFilter('all')" id="filter-all"
+                    class="px-3 py-1.5 rounded-lg transition-all duration-200 bg-white shadow-sm text-brand-600 font-semibold">
+                    전체
+                </button>
+                <button onclick="setFilter('active')" id="filter-active"
+                    class="px-3 py-1.5 rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-900">
+                    진행 중
+                </button>
+                <button onclick="setFilter('completed')" id="filter-completed"
+                    class="px-3 py-1.5 rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-900">
+                    완료
+                </button>
+            </div>
+
+            <!-- Clear All Button -->
+            <button onclick="confirmClearAll()"
+                class="text-xs md:text-sm text-rose-500 hover:text-rose-700 font-medium px-2 py-1.5 rounded-lg hover:bg-rose-50 transition-colors flex items-center gap-1.5">
+                <i class="fa-regular fa-trash-can"></i>
+                <span>전체 삭제</span>
+            </button>
+        </div>
+
+        <!-- Add Input Form Section -->
+        <div class="p-4 md:p-6 border-b border-slate-100 bg-white relative z-10">
+            <form id="todo-form" onsubmit="handleAddTodo(event)" class="relative flex items-center gap-2">
+                <div class="relative flex-1">
+                    <input type="text" id="todo-input" placeholder="새로운 할 일을 입력하세요... (엔터 또는 추가 버튼)"
+                        class="w-full pl-4 pr-10 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 text-sm md:text-base focus:outline-none focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-500/20 transition-all"
+                        autocomplete="off" />
+                </div>
+                <button type="submit"
+                    class="px-5 py-3 bg-brand-600 hover:bg-brand-700 active:scale-95 text-white font-medium text-sm md:text-base rounded-xl shadow-md shadow-brand-500/20 transition-all flex items-center justify-center shrink-0 gap-1.5">
+                    <i class="fa-solid fa-plus"></i>
+                    <span class="hidden sm:inline">추가</span>
+                </button>
+            </form>
+            <p id="input-error-msg" class="text-xs text-rose-500 mt-2 hidden font-medium flex items-center gap-1">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <span>공백이나 빈 텍스트는 추가할 수 없습니다.</span>
+            </p>
+        </div>
+
+        <!-- Task List Container -->
+        <div class="p-4 md:p-6 bg-slate-50/50 flex-1 min-h-[300px] max-h-[480px] overflow-y-auto relative z-20">
+            <ul id="todo-list" class="space-y-3">
+                <!-- Todo Items will be dynamically inserted here -->
+            </ul>
+
+            <!-- Empty State Display -->
+            <div id="empty-state" class="hidden flex-col items-center justify-center py-12 text-center text-slate-400">
+                <div
+                    class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-2xl mb-3 text-slate-300">
+                    <i class="fa-regular fa-clipboard"></i>
+                </div>
+                <p class="font-medium text-slate-500">등록된 할 일이 없습니다.</p>
+                <p class="text-xs text-slate-400 mt-1">상단 입력창에서 새로운 할 일을 등록해 보세요!</p>
+            </div>
+        </div>
+
+        <!-- Footer / Instructions -->
+        <footer class="p-3 bg-slate-100 border-t border-slate-200/60 text-center text-xs text-slate-400">
+            <p><i class="fa-solid fa-lightbulb text-amber-400 mr-1"></i> 팁: 할 일 명칭을 <span
+                    class="font-semibold text-slate-600">더블클릭</span>하면 수정할 수 있습니다.</p>
+        </footer>
+    </main>
+
+    <!-- Global Hover Tooltip Element (Fixed Position to avoid overflow clipping) -->
+    <div id="global-tooltip"
+        class="px-3 py-1.5 bg-slate-900/95 text-white text-xs rounded-lg shadow-2xl max-w-xs break-words text-center border border-slate-700">
+        <span id="global-tooltip-text"></span>
+        <div id="global-tooltip-arrow" class="absolute left-1/2 -translate-x-1/2 border-4 border-transparent"></div>
+    </div>
+
+    <!-- Custom Modal for Delete Confirmation -->
+    <div id="modal-backdrop"
+        class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden opacity-0 transition-opacity duration-200">
+        <div id="modal-box"
+            class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl scale-95 transition-transform duration-200">
+            <div
+                class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xl mb-4 mx-auto">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="text-lg font-bold text-center text-slate-800">모든 할 일 삭제</h3>
+            <p class="text-sm text-slate-500 text-center mt-2">정말로 모든 할 일 목록을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
+            <div class="flex gap-3 mt-6">
+                <button onclick="closeModal()"
+                    class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl text-sm transition-colors">
+                    취소
+                </button>
+                <button onclick="executeClearAll()"
+                    class="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-xl text-sm transition-colors shadow-lg shadow-rose-500/20">
+                    전체 삭제
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // Storage Key
+        const STORAGE_KEY = 'my_todo_list_data_v1';
+
+        // State Management
+        let todos = [];
+        let currentFilter = 'all'; // 'all', 'active', 'completed'
+
+        // DOM Elements
+        const todoForm = document.getElementById('todo-form');
+        const todoInput = document.getElementById('todo-input');
+        const todoList = document.getElementById('todo-list');
+        const emptyState = document.getElementById('empty-state');
+        const inputErrorMsg = document.getElementById('input-error-msg');
+
+        // Date & Header Elements
+        const currentDateText = document.getElementById('current-date-text');
+        const currentDayBadge = document.getElementById('current-day-badge');
+        const taskStatsText = document.getElementById('task-stats-text');
+        const completionPercentage = document.getElementById('completion-percentage');
+        const progressBar = document.getElementById('progress-bar');
+
+        // Modal Elements
+        const modalBackdrop = document.getElementById('modal-backdrop');
+        const modalBox = document.getElementById('modal-box');
+
+        // Global Tooltip Elements
+        const globalTooltip = document.getElementById('global-tooltip');
+        const globalTooltipText = document.getElementById('global-tooltip-text');
+        const globalTooltipArrow = document.getElementById('global-tooltip-arrow');
+
+        // Initialize App
+        window.addEventListener('DOMContentLoaded', () => {
+            initDateDisplay();
+            loadTodos();
+            render();
+            setupTooltipListeners();
+        });
+
+        // Global Tooltip Listener Setup
+        function setupTooltipListeners() {
+            // Hide tooltip when scrolling the list container
+            const listContainer = todoList.parentElement;
+            if (listContainer) {
+                listContainer.addEventListener('scroll', hideGlobalTooltip);
+            }
+            window.addEventListener('resize', hideGlobalTooltip);
+        }
+
+        function showGlobalTooltip(element, text) {
+            if (!text) return;
+
+            globalTooltipText.textContent = text;
+            const rect = element.getBoundingClientRect();
+
+            // Temporary position to measure dimensions
+            globalTooltip.style.top = '-9999px';
+            globalTooltip.style.left = '-9999px';
+            globalTooltip.classList.add('active');
+
+            const tooltipRect = globalTooltip.getBoundingClientRect();
+
+            // Calculate top position (default: above element)
+            let top = rect.top - tooltipRect.height - 8;
+            let isBelow = false;
+
+            // If it would get clipped by top of viewport or header area, show BELOW element
+            if (top < 10) {
+                top = rect.bottom + 8;
+                isBelow = true;
+            }
+
+            // Calculate horizontal center
+            let left = rect.left + (rect.width / 2);
+
+            // Apply coordinates
+            globalTooltip.style.top = `${top}px`;
+            globalTooltip.style.left = `${left}px`;
+
+            // Adjust Arrow position and style
+            if (isBelow) {
+                globalTooltipArrow.className = "absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900/95";
+            } else {
+                globalTooltipArrow.className = "absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900/95";
+            }
+        }
+
+        function hideGlobalTooltip() {
+            globalTooltip.classList.remove('active');
+        }
+
+        // Date Display Handler
+        function initDateDisplay() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const date = String(now.getDate()).padStart(2, '0');
+
+            const daysKR = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+            const dayName = daysKR[now.getDay()];
+
+            currentDateText.textContent = `${year}년 ${month}월 ${date}일`;
+            currentDayBadge.textContent = dayName;
+        }
+
+        // LocalStorage Logic
+        function loadTodos() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                todos = data ? JSON.parse(data) : [];
+            } catch (e) {
+                console.error('Failed to load storage data', e);
+                todos = [];
+            }
+        }
+
+        function saveTodos() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+            } catch (e) {
+                console.error('Failed to save to storage', e);
+            }
+        }
+
+        // Add Todo Handler (Appends to VERY BOTTOM as specified)
+        function handleAddTodo(event) {
+            event.preventDefault();
+            const title = todoInput.value.trim();
+
+            // Blank/Empty Check
+            if (!title) {
+                showValidationError();
+                return;
+            }
+
+            hideValidationError();
+
+            const newTodo = {
+                id: Date.now().toString(),
+                title: title,
+                completed: false,
+                createdAt: new Date().toISOString()
+            };
+
+            // Requirement: Must append to the VERY BOTTOM of the item list
+            todos.push(newTodo);
+            saveTodos();
+            todoInput.value = '';
+
+            render();
+
+            // Scroll to bottom after adding
+            const listContainer = todoList.parentElement;
+            setTimeout(() => {
+                listContainer.scrollTo({
+                    top: listContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }, 50);
+        }
+
+        // Validation Error UI Toggle
+        function showValidationError() {
+            inputErrorMsg.classList.remove('hidden');
+            todoInput.classList.add('border-rose-500', 'ring-2', 'ring-rose-500/20', 'animate-shake');
+            setTimeout(() => {
+                todoInput.classList.remove('animate-shake');
+            }, 400);
+        }
+
+        function hideValidationError() {
+            inputErrorMsg.classList.add('hidden');
+            todoInput.classList.remove('border-rose-500', 'ring-2', 'ring-rose-500/20');
+        }
+
+        // Input reset error on type
+        todoInput.addEventListener('input', () => {
+            if (todoInput.value.trim().length > 0) {
+                hideValidationError();
+            }
+        });
+
+        // Toggle Complete Status
+        function toggleComplete(id) {
+            todos = todos.map(todo => {
+                if (todo.id === id) {
+                    return { ...todo, completed: !todo.completed };
+                }
+                return todo;
+            });
+            saveTodos();
+            render();
+        }
+
+        // Single Item Delete Handler
+        function deleteTodo(id) {
+            todos = todos.filter(todo => todo.id !== id);
+            saveTodos();
+            render();
+        }
+
+        // Double Click to Edit Logic
+        function enableEditMode(id) {
+            const titleElement = document.getElementById(`todo-text-${id}`);
+            const inputElement = document.getElementById(`todo-edit-input-${id}`);
+            const itemBox = document.getElementById(`todo-box-${id}`);
+
+            if (!titleElement || !inputElement) return;
+
+            // Show edit input, hide title span
+            titleElement.classList.add('hidden');
+            inputElement.classList.remove('hidden');
+            inputElement.focus();
+            inputElement.select();
+
+            // Visual highlight
+            if (itemBox) {
+                itemBox.classList.add('ring-2', 'ring-brand-500/50');
+            }
+        }
+
+        function saveEdit(id) {
+            const inputElement = document.getElementById(`todo-edit-input-${id}`);
+            if (!inputElement) return;
+
+            const newTitle = inputElement.value.trim();
+
+            if (!newTitle) {
+                // If emptied, prompt error shake or cancel edit
+                inputElement.classList.add('animate-shake', 'border-rose-500');
+                setTimeout(() => inputElement.classList.remove('animate-shake'), 400);
+                return;
+            }
+
+            todos = todos.map(todo => {
+                if (todo.id === id) {
+                    return { ...todo, title: newTitle };
+                }
+                return todo;
+            });
+
+            saveTodos();
+            render();
+        }
+
+        function cancelEdit(id) {
+            render();
+        }
+
+        // Filter Setter
+        function setFilter(filter) {
+            currentFilter = filter;
+
+            // Filter button styles
+            ['all', 'active', 'completed'].forEach(f => {
+                const btn = document.getElementById(`filter-${f}`);
+                if (f === filter) {
+                    btn.className = "px-3 py-1.5 rounded-lg transition-all duration-200 bg-white shadow-sm text-brand-600 font-semibold";
+                } else {
+                    btn.className = "px-3 py-1.5 rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-900";
+                }
+            });
+
+            render();
+        }
+
+        // Clear All Logic with Custom Modal
+        function confirmClearAll() {
+            if (todos.length === 0) return;
+            modalBackdrop.classList.remove('hidden');
+            setTimeout(() => {
+                modalBackdrop.classList.remove('opacity-0');
+                modalBox.classList.remove('scale-95');
+                modalBox.classList.add('scale-100');
+            }, 10);
+        }
+
+        function closeModal() {
+            modalBackdrop.classList.add('opacity-0');
+            modalBox.classList.remove('scale-100');
+            modalBox.classList.add('scale-95');
+            setTimeout(() => {
+                modalBackdrop.classList.add('hidden');
+            }, 200);
+        }
+
+        function executeClearAll() {
+            todos = [];
+            saveTodos();
+            closeModal();
+            render();
+        }
+
+        // Main Render Function
+        function render() {
+            // Filter logic
+            const filteredTodos = todos.filter(todo => {
+                if (currentFilter === 'active') return !todo.completed;
+                if (currentFilter === 'completed') return todo.completed;
+                return true;
+            });
+
+            // Update List UI
+            todoList.innerHTML = '';
+
+            if (filteredTodos.length === 0) {
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            } else {
+                emptyState.classList.add('hidden');
+                emptyState.classList.remove('flex');
+
+                filteredTodos.forEach(todo => {
+                    const li = document.createElement('li');
+                    li.className = "task-item-container relative group animate-slide-in";
+
+                    li.innerHTML = `
+                        <div id="todo-box-${todo.id}" class="flex items-center justify-between p-3.5 bg-white border border-slate-200/80 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 gap-3">
+                            
+                            <!-- Checkbox and Title Section -->
+                            <div class="flex items-center gap-3 min-w-0 flex-1">
+                                <!-- Checkbox -->
+                                <button 
+                                    type="button" 
+                                    onclick="toggleComplete('${todo.id}')"
+                                    class="w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-all ${todo.completed
+                            ? 'bg-emerald-500 border-emerald-500 text-white'
+                            : 'border-slate-300 hover:border-brand-500 bg-slate-50'
+                        }"
+                                    aria-label="완료 체크 토글"
+                                >
+                                    ${todo.completed ? '<i class="fa-solid fa-check text-xs"></i>' : ''}
+                                </button>
+
+                                <!-- Title Display / Edit Input -->
+                                <div class="min-w-0 flex-1 relative">
+                                    <!-- Read-only Text (Double Click to edit) -->
+                                    <span 
+                                        id="todo-text-${todo.id}" 
+                                        ondblclick="enableEditMode('${todo.id}')"
+                                        onmouseenter="showGlobalTooltip(this, '${escapeHtml(todo.title)}')"
+                                        onmouseleave="hideGlobalTooltip()"
+                                        title=""
+                                        class="task-title-truncate text-sm md:text-base font-medium cursor-pointer select-none transition-colors ${todo.completed
+                            ? 'line-through text-slate-400 font-normal'
+                            : 'text-slate-700 hover:text-brand-600'
+                        }"
+                                    >
+                                        ${escapeHtml(todo.title)}
+                                    </span>
+
+                                    <!-- Edit Input (Hidden by default) -->
+                                    <input 
+                                        type="text" 
+                                        id="todo-edit-input-${todo.id}"
+                                        value="${escapeHtml(todo.title)}"
+                                        onkeydown="if(event.key==='Enter') saveEdit('${todo.id}'); if(event.key==='Escape') cancelEdit('${todo.id}');"
+                                        onblur="saveEdit('${todo.id}')"
+                                        class="hidden w-full px-2 py-1 text-sm border border-brand-500 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500 bg-white"
+                                    />
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="flex items-center gap-1 shrink-0">
+                                <!-- Manual Edit Button -->
+                                <button 
+                                    onclick="enableEditMode('${todo.id}')"
+                                    class="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors text-xs md:text-sm"
+                                    title="수정하기"
+                                >
+                                    <i class="fa-regular fa-pen-to-square"></i>
+                                </button>
+                                <!-- Delete Button -->
+                                <button 
+                                    onclick="deleteTodo('${todo.id}')"
+                                    class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors text-xs md:text-sm"
+                                    title="삭제하기"
+                                >
+                                    <i class="fa-regular fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+
+                    todoList.appendChild(li);
+                });
+            }
+
+            // Update Progress and Stats
+            updateStats();
+        }
+
+        // Stats updates
+        function updateStats() {
+            const total = todos.length;
+            const completedCount = todos.filter(t => t.completed).length;
+            const remaining = total - completedCount;
+
+            taskStatsText.textContent = `남은 할 일: ${remaining}개`;
+
+            const percentage = total === 0 ? 0 : Math.round((completedCount / total) * 100);
+            completionPercentage.textContent = `${percentage}%`;
+            progressBar.style.width = `${percentage}%`;
+        }
+
+        // Helper: Escape HTML to prevent XSS
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "& letters;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+
+</html>
